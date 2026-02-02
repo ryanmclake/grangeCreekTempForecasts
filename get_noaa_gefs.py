@@ -85,3 +85,6 @@ for variable in daily_shortwave_radiation_sum:
 
 daily_dataframe = pd.DataFrame(data = daily_data)
 print("\nDaily data\n", daily_dataframe)
+
+df = pd.DataFrame(hourly_dataframe)
+df.to_csv("noaa_gefs_forecast.csv", index=False)
