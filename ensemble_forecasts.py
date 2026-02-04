@@ -20,8 +20,8 @@ params = {
 	"longitude": -104.937186,
 	"hourly": ["temperature_2m", "wind_speed_10m", "cloud_cover", "precipitation", "shortwave_radiation_instant", "surface_temperature"],
 	"models": "ncep_gefs_seamless",
-	"timezone": "GMT"
-	#"past_days": 3,
+	"timezone": "GMT",
+	"past_days": 3
 }
 responses = openmeteo.weather_api(url, params=params)
 
@@ -73,4 +73,4 @@ hourly_dataframe = pd.DataFrame(data = hourly_data)
 print("\nHourly data\n", hourly_dataframe)
 
 df = pd.DataFrame(hourly_dataframe)
-df.to_csv("ensemble_forecast_data_current.csv", index=False)
+df.to_csv("ensemble_forecast_data_feb1.csv", index=False)
