@@ -16,7 +16,7 @@ params = {
 	"latitude": 39.8916,
 	"longitude": -104.9371,
 	"start_date": "2026-01-21",
-	"end_date": "2026-01-31",
+	"end_date": "2026-02-10",
 	"hourly": ["temperature_2m", "relative_humidity_2m", "cloud_cover", "wind_speed_10m", "shortwave_radiation", "soil_temperature_0_to_7cm", "soil_moisture_0_to_7cm"],
 	"timezone": "GMT",
 }
@@ -58,4 +58,4 @@ hourly_dataframe = pd.DataFrame(data = hourly_data)
 print("\nHourly data\n", hourly_dataframe)
 
 df = pd.DataFrame(hourly_dataframe)
-df.to_csv("historical_met_data_new.csv", index=False)
+df.to_csv("historical_met_data_newest.csv", index=False)
