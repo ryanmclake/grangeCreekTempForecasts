@@ -10,7 +10,14 @@ h <- readr::read_csv("GRANGE_CREEK_TEMP.csv") |>
 
 
 ggplot(h, aes(x=datetime, y=temp_c, group = datetime,)) + 
-  geom_boxplot()
+  geom_boxplot()+
+  ylab("water temperature (C)")+
+  theme_classic()+
+  theme(axis.text.x = element_text(color = "black"),
+        axis.text.y = element_text(color = "black"))
+
+ggsave(paste0(last(h,1,-1),"_Observed_temps.png"), width = 5, height = 3.7, dpi = 300)
+
 
 
 

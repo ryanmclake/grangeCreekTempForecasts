@@ -13,10 +13,10 @@ o <- readr::read_csv("GRANGE_CREEK_TEMP.csv") |>
   summarize(mean_temp = mean(temp_c),
             sd_temp = sd(temp_c))
 m <- read_csv("historical_met_data.csv")
-f <- read_csv("ensemble_forecast_data.csv")
+f <- read_csv("ensemble_forecast_data_feb1.csv")
 
 target <- left_join(o, m, by = "date") |>
-  filter(date < "2026-01-30 17:00:00")
+  filter(date < as.POSIXct("2026-02-01 00:00:00", tz = "GMT"))
 
 
 # Define DLM function
@@ -25,7 +25,6 @@ DLM_function <- function() {
   y <- target$mean_temp
   u <- target$sd_temp
   sun <- target$shortwave_radiation
-  cloud <- target$cloud_cover
   
   data <- list(y = y,n = length(y),
                x_ic=mean(y, na.rm = T),
@@ -34,12 +33,11 @@ DLM_function <- function() {
                r_obs=1,          
                a_add=1,
                r_add=1,           
-               sun = sun,
-               cloud = cloud
+               sun = sun
   )
   
   # Define the DLM model; simplified model since `X` isn't used
-  model = list(obs="y",fixed="~ 1 + X + sun + cloud", n.iternumber = 10000)
+  model = list(obs="y",fixed="~ 1 + X + sun", n.iternumber = 10000)
   
   # Run the DLM
   ef.out <- ecoforecastR::fit_dlm(model = model, data = data)
@@ -66,13 +64,13 @@ DLM_function <- function() {
 # Run the DLM function to get initial parameters
 results <- DLM_function()
 
-forecastN <- function(IC, betaIntercept, betaX, betacloud, betasun, sun, cloud, Q = 0){
+forecastN <- function(IC, betaIntercept, betaX, betasun, sun, Q = 0, n = 1){
   
   NT = 240
-  N <- matrix(NA,50,NT)  ## storage
+  N <- matrix(NA,1,NT)  ## storage
   Nprev <- IC           ## initialize
   for(t in 1:NT){
-    mu = Nprev + betaX * Nprev + betasun * sun[t] + betacloud * cloud[t] + betaIntercept  ## mean
+    mu = Nprev + betaX * Nprev + betasun * sun[t] + betaIntercept  ## mean
     N[,t] <- rnorm(n,mu,Q)                         ## predict next step
     Nprev <- N[,t]                                  ## update IC
   }
@@ -86,40 +84,58 @@ rad_names <- f |>
   dplyr::select(matches('shortwave_radiation_instant'))
 rad_names <- c(names(rad_names))
 
-cloud_names <- f |>
-  dplyr::select(matches('cloud_cover_member'))
-cloud_names <- c(names(cloud_names))
-
 IC <- as.matrix(results$DLM_results$predict)
 IC <- c(last(IC,30000,1))
+IC = sample(IC,50)
+
+params_forecast <- params[sample(nrow(params), 50), ] %>%
+  bind_cols(., IC) |>
+  rename(IC = `...6`)
 
 object <- list()
+forecasts <- list()
 
-for(h in 1:length(cloud_names)){
-  for(g in 1:length(rad_names)){
-    
-    cloud <- f |> select(cloud_names[h]) |> pull()
+startTime <- Sys.time()
+
+for(d in 1:length(params_forecast$IC)){
+  
+  IC = params_forecast$IC[d]
+  betaIntercept = params_forecast$betaIntercept[d]
+  betaX = params_forecast$betaX[d]
+  betasun = params_forecast$betasun[d]
+  
+for(g in 1:length(rad_names)){
+
     sun <- f |> select(rad_names[g]) |> pull()
-    
-    forecast <- forecastN(IC = sample(IC,50), 
-                          betaIntercept = sample(params[,1],50), 
-                          betaX = sample(params[,2],50), 
-                          betacloud = sample(params[,3],50),
-                          betasun = sample(params[,4],50),
+  
+    forecast <- forecastN(IC = IC, 
+                          betaIntercept = betaIntercept, 
+                          betaX = betaX, 
+                          betasun = betasun,
                           sun = sun,
-                          cloud = cloud, 
                           Q = 0)
-    object[[h]] <- forecast
-  }
+    
+    object[[g]] <- forecast
+ }
+  forecasts[[d]] <- object
 }
 
 
 
-forecast_NOAA_ensembles <- as.data.frame(do.call("rbind", object))
-forecast_NOAA_ensembles <- as.data.frame(t(forecast_NOAA_ensembles))
-forecast_NOAA_ensembles <- cbind(f$date, forecast_NOAA_ensembles)
-names(forecast_NOAA_ensembles)[1] <- "date"
-forecast <- forecast_NOAA_ensembles|>
+endTime <- Sys.time()
+
+# prints recorded time
+print(endTime - startTime) 
+
+forecast_ensembles <- unlist(forecasts, recursive = FALSE)
+
+forecast_ensembles2 <- as.data.frame(do.call("rbind", forecast_ensembles))
+
+
+forecast_ensembles2 <- as.data.frame(t(forecast_ensembles2))
+forecast_ensembles2 <- cbind(f$date, forecast_ensembles2)
+names(forecast_ensembles2)[1] <- "date"
+forecast <- forecast_ensembles2|>
   tidyr::pivot_longer(cols = starts_with("V"),
                       names_to = "variable",
                       values_to = "value",
@@ -142,8 +158,15 @@ observed <- o |> select(date, mean_temp, sd_temp)
 
 all_data <- bind_rows(calibrated, forecast)
 
+write_csv(all_data, paste0(forecast$date[1],"_temp_forecast_sun.csv"))
+
 ggplot(all_data, aes(date, value, group = variable)) +
-  geom_vline(xintercept = as.POSIXct("2026-01-31 00:00:00", tz = "GMT"), linetype='solid', color='blue', linewidth=0.5)+
+  geom_vline(xintercept = forecast$date[1], linetype='solid', color='darkblue', linewidth=0.5)+
   geom_line()+
-  geom_point(data = observed, aes(date, mean_temp), size = 0.5, color = "red", inherit.aes = F)+
-  theme_classic()
+  geom_point(data = observed, aes(date, mean_temp), size = 0.6, color = "darkred", inherit.aes = F)+
+  ylab("water temperature (C)")+
+  theme_classic()+
+  theme(axis.text.x = element_text(color = "black"),
+        axis.text.y = element_text(color = "black"))
+
+ggsave(paste0(forecast$date[1],"_forecasts_sun.png"), width = 5, height = 3.7, dpi = 300)
